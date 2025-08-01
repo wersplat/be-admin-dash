@@ -1,11 +1,9 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Auth } from '@supabase/auth-ui-react';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
-import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const { user } = useAuth();
@@ -18,21 +16,32 @@ export default function LoginPage() {
     // Check if this is a callback from OAuth
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Login: Checking for existing session...');
+        const { data: { session }, error } = await getSupabase().auth.getSession();
+        
+        console.log('Login: Session check result:', { session, error });
         
         if (session) {
+          console.log('Login: Session found, redirecting to dashboard');
           const redirectTo = searchParams.get('redirectedFrom') || '/dashboard';
           router.push(redirectTo);
+        } else {
+          console.log('Login: No active session found');
         }
       } catch (err) {
-        console.error('Error checking session:', err);
+        console.error('Login: Error checking session:', err);
         setError('Failed to check authentication status');
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkSession();
+    // Add a small delay to ensure auth state is properly initialized
+    const timer = setTimeout(() => {
+      checkSession();
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [router, searchParams]);
 
   if (isLoading) {
@@ -45,12 +54,60 @@ export default function LoginPage() {
 
   // If user is already logged in, show a loading state (will be redirected by the effect)
   if (user) {
+    console.log('Login: User is already logged in, redirecting to dashboard');
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="text-center">
+          <div className="mb-4">Already logged in</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <div className="mt-4">Redirecting to dashboard...</div>
+        </div>
       </div>
     );
   }
+
+  const redirectTo = searchParams.get('redirectedFrom') || '/';
+
+  const handleMagicLinkSignIn = async (email: string) => {
+    if (!email) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      const { error } = await getSupabase().auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+        },
+      });
+
+      if (error) throw error;
+      
+      // Show success message
+      setError(null);
+      alert('Check your email for the login link!');
+    } catch (error) {
+      console.error('Error sending magic link:', error);
+      setError('Failed to send magic link. Please try again.');
+    }
+  };
+
+  const handleOAuthSignIn = async (provider: 'google' | 'github') => {
+    try {
+      const { error } = await getSupabase().auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error(`Error signing in with ${provider}:`, error);
+      setError(`Failed to sign in with ${provider}. Please try again.`);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -59,7 +116,8 @@ export default function LoginPage() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Admin Dashboard
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-sm text-gray-600">
+            Sign in to manage your Supabase backend
           </p>
         </div>
         
@@ -79,24 +137,43 @@ export default function LoginPage() {
         )}
         
         <div className="mt-8 bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <Auth
-            supabaseClient={supabase}
-            appearance={{
-              theme: ThemeSupa,
-              variables: {
-                default: {
-                  colors: {
-                    brand: '#6366f1',
-                    brandAccent: '#4f46e5',
-                  },
-                },
-              },
-            }}
-            providers={['google', 'github']}
-            magicLink
-            redirectTo={`${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`}
-            showLinks={false}
-          />
+          <div className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  placeholder="Enter your email"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const input = e.target as HTMLInputElement;
+                      handleMagicLinkSignIn(input.value);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                onClick={() => {
+                  const emailInput = document.getElementById('email') as HTMLInputElement;
+                  handleMagicLinkSignIn(emailInput.value);
+                }}
+              >
+                Send Magic Link
+              </button>
+            </div>
+          </div>
           
           <div className="mt-6">
             <div className="relative">
@@ -111,14 +188,7 @@ export default function LoginPage() {
             <div className="mt-6 grid grid-cols-2 gap-3">
               <div>
                 <button
-                  onClick={() => {
-                    supabase.auth.signInWithOAuth({
-                      provider: 'google',
-                      options: {
-                        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-                      },
-                    });
-                  }}
+                  onClick={() => handleOAuthSignIn('google')}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                 >
                   <span className="sr-only">Sign in with Google</span>
@@ -130,14 +200,7 @@ export default function LoginPage() {
 
               <div>
                 <button
-                  onClick={() => {
-                    supabase.auth.signInWithOAuth({
-                      provider: 'github',
-                      options: {
-                        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-                      },
-                    });
-                  }}
+                  onClick={() => handleOAuthSignIn('github')}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                 >
                   <span className="sr-only">Sign in with GitHub</span>
@@ -146,16 +209,6 @@ export default function LoginPage() {
                   </svg>
                 </button>
               </div>
-                    email: '', // Will be filled by the form
-                    options: {
-                      emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-                    },
-                  });
-                }}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Sign in with magic link
-              </button>
             </div>
           </div>
         </div>

@@ -1,15 +1,12 @@
 'use client';
 
-import { Fragment } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
 import {
   ChartBarIcon,
   UsersIcon,
-  CogIcon,
-  XMarkIcon,
+  Cog6ToothIcon as CogIcon,
   ArrowLeftOnRectangleIcon,
   HomeIcon,
-  DatabaseIcon,
+  ServerStackIcon as DatabaseIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';

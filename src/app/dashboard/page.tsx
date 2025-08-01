@@ -2,7 +2,8 @@
 
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { getSupabase } from '@/lib/supabase';
 
 type StatsType = {
   totalUsers: number;
@@ -11,21 +12,55 @@ type StatsType = {
   storageUsed: string;
 };
 
+type ActivityType = {
+  id: string;
+  action: string;
+  created_at: string;
+  user_id: string;
+  details?: Record<string, unknown>;
+};
+
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  
+  // Debug logging for auth state
+  console.log('Dashboard: Auth state -', { user, loading });
+  
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    console.log('Dashboard: Checking auth state -', { user, loading });
+    
+    // If we have a user, show the dashboard
+    if (user && !loading) {
+      console.log('Dashboard: User is authenticated, showing dashboard');
+    } else if (!loading && !user) {
+      console.log('Dashboard: No user and not loading, redirecting to login');
+      // Add a small delay to prevent rapid redirects
+      const timer = setTimeout(() => {
+        router.push('/login');
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [user, loading, router]);
+
   const [stats, setStats] = useState<StatsType>({
     totalUsers: 0,
     totalProjects: 0,
     activeSessions: 0,
     storageUsed: '0 MB',
   });
-  const [loading, setLoading] = useState(true);
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState<ActivityType[]>([]);
 
   useEffect(() => {
+    if (!user) return; // Don't fetch if user is not authenticated
+    
     const fetchDashboardData = async () => {
       try {
-        setLoading(true);
+        console.log('Dashboard: Fetching dashboard data for user:', user?.email);
+        setIsLoading(true);
+        const supabase = getSupabase();
         
         // Fetch user count
         const { count: userCount } = await supabase
@@ -39,14 +74,38 @@ export default function DashboardPage() {
 
         // Fetch active sessions (this is a simplified example)
         const { data: sessions } = await supabase.auth.admin.listUsers();
-        const activeSessions = sessions.users.filter(
+        // Get active sessions by filtering users with last_sign_in_at
+        const activeSessions = sessions?.users?.filter(
           (u) => u.last_sign_in_at
-        ).length;
+        ).length || 0;
 
-        // Fetch storage usage (simplified)
-        const { data: storageData } = await supabase.storage.getBucket('avatars');
-        const storageUsed = storageData?.size
-          ? `${(storageData.size / (1024 * 1024)).toFixed(2)} MB`
+        // Fetch storage usage
+        const { data: buckets } = await supabase.storage.listBuckets();
+        let totalSize = 0;
+        
+        // Calculate total size of all files in all buckets
+        if (buckets) {
+          for (const bucket of buckets) {
+            const { data: files } = await supabase.storage
+              .from(bucket.name)
+              .list();
+            
+            if (files) {
+              interface StorageFile {
+                metadata: {
+                  size?: number;
+                  [key: string]: unknown;
+                };
+              }
+              const bucketSize = files.reduce((sum: number, file: StorageFile) => 
+                sum + (file.metadata?.size || 0), 0);
+              totalSize += bucketSize;
+            }
+          }
+        }
+        
+        const storageUsed = totalSize > 0 
+          ? `${(totalSize / (1024 * 1024)).toFixed(2)} MB`
           : '0 MB';
 
         setStats({
@@ -63,11 +122,13 @@ export default function DashboardPage() {
           .order('created_at', { ascending: false })
           .limit(5);
 
-        setRecentActivity(activity || []);
+        // Type assertion to ensure the data matches our ActivityType
+        const typedActivity = (activity || []) as ActivityType[];
+        setRecentActivity(typedActivity);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
@@ -76,7 +137,7 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  if (loading) {
+  if (loading || isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -134,7 +195,12 @@ export default function DashboardPage() {
                     <div className="mt-2 sm:flex sm:justify-between">
                       <div className="sm:flex">
                         <p className="flex items-center text-sm text-gray-500">
-                          {activity.details}
+                          {activity.action}
+                          {activity.details && (
+                            <span className="ml-1 text-gray-400">
+                              {JSON.stringify(activity.details)}
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
