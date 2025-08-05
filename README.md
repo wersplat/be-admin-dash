@@ -20,12 +20,14 @@ A modern, responsive admin dashboard built with Next.js, TypeScript, and Tailwin
 ## Getting Started
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/yourusername/be-admin-dash.git
    cd be-admin-dash
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    # or
@@ -37,6 +39,7 @@ A modern, responsive admin dashboard built with Next.js, TypeScript, and Tailwin
    - Update the Supabase URL and anon key with your project's credentials
 
 4. **Run the development server**
+
    ```bash
    npm run dev
    # or
@@ -90,6 +93,7 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 ### Other Platforms
 
 You can also deploy to other platforms that support Next.js:
+
 - [Netlify](https://www.netlify.com/with/nextjs/)
 - [AWS Amplify](https://docs.aws.amazon.com/amplify/latest/userguide/deploy-nextjs-app.html)
 - [Railway](https://railway.app/)
